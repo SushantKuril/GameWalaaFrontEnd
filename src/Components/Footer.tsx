@@ -19,7 +19,18 @@ const Footer = () => {
         "💖 Thanks for supporting us! Your tip keeps the games running.",
       image: "https://yourdomain.com/logo.png",
       handler: function (response: any) {
-        alert("Payment Success! Payment ID: " + response.razorpay_payment_id);
+        try {
+          // Keep the user on the same page — just notify success
+          alert("Payment Success! Payment ID: " + response.razorpay_payment_id + " — you will remain on this page.");
+        } catch (err) {
+          console.error("Error in payment handler:", err);
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          // Ensure we don't redirect elsewhere when modal is closed
+          console.log("Razorpay modal dismissed from footer — staying on current page.");
+        },
       },
       prefill: {
         name: "Anonymous",

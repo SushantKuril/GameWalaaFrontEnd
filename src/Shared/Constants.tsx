@@ -3,7 +3,7 @@ const getBaseUrl = () => {
     return "http://localhost:8080";
   }
   // Use LAN IP if not localhost
-  return "http://10.0.100.39:8080";
+  return "http://10.0.5.163:8080";
 };
 
 const Constants = {

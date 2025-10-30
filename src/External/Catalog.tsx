@@ -86,48 +86,104 @@ const Catalog = () => {
       description: `Payment for ${gameData.gameName}`,
       image: logo,
       handler: async (response: any) => {
-        const date = new Date();
-        const data = {
-          orderCreationId: order_id,
-          razorpayPaymentId: response.razorpay_payment_id,
-          razorpayOrderId: response.razorpay_order_id,
-          razorpaySignature: response.razorpay_signature,
-        };
+        // Handle payment success without navigating away from the catalog.
+        // We wrap calls in try/catch to ensure failures don't trigger navigation.
+        try {
+          const date = new Date();
+          // Get deviceId from localStorage or generate if not present
+          let deviceId = localStorage.getItem("deviceId");
+          if (!deviceId) {
+            // Fallback for browsers without crypto.randomUUID
+            if (window.crypto && window.crypto.getRandomValues) {
+              deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c: string) {
+                const r = window.crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+              });
+            } else {
+              // Last resort: use Date.now and Math.random
+              deviceId = 'dev-' + Date.now() + '-' + Math.floor(Math.random() * 1e9);
+            }
+            localStorage.setItem("deviceId", deviceId || "");
+          }
 
-        const data2 = {
-          name: gameData.gameName,
-          gameId: Number(gameData.gameId),
-          price: gamePrice,
-          isTimed: true,
-          levels: 0,
-          currentTime: date.toISOString(),
-          played: false,
-          playTime: timeInMins,
-          paymentId: response.razorpay_payment_id,
-        };
+          // Send deviceId to local launcher server for automation
+          try {
+            await fetch('http://localhost:5000/set-device-id', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId })
+            });
+            console.log('[PAYMENT-DEBUG] Sent deviceId to local launcher server:', deviceId);
+          } catch (err) {
+            console.error('[PAYMENT-ERROR] Could not send deviceId to launcher server:', err);
+          }
 
-        await axios.post(
-          `${Constants.baseUrl}/${Constants.orderDetails}`,
-          data
-        );
-        setKonamiCodes([]);
-        // this only runs if the above succeeds
-        const result = await axios.post(
-          `${Constants.baseUrl}/${Constants.gameStatus}`,
-          data2
-        );
+          const data = {
+            orderCreationId: order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpayOrderId: response.razorpay_order_id,
+            razorpaySignature: response.razorpay_signature,
+            userId: deviceId,
+            timeLimit: timeInMins,
+          };
 
-        const konami = {
-          gameName: gameData.gameName,
-          gameId: gameData.gameId,
-          konamiCode: result.data.Code,
-        };
+          const data2 = {
+            name: gameData.gameName,
+            gameId: Number(gameData.gameId),
+            price: gamePrice,
+            isTimed: true,
+            levels: 0,
+            currentTime: date.toISOString(),
+            played: false,
+            playTime: timeInMins,
+            paymentId: response.razorpay_payment_id,
+          };
 
-        setKonamiCodes((prev) => {
-          const updated = [...prev, konami];
-          localStorage.setItem("konamiCodes", JSON.stringify(updated));
-          return updated;
-        });
+          console.log('[PAYMENT-DEBUG] Sending payment details to backend:', data);
+          try {
+            const detailsResp = await axios.post(
+              `${Constants.baseUrl}/${Constants.orderDetails}`,
+              data
+            );
+            console.log('[PAYMENT-DEBUG] Backend response for payment details:', detailsResp.status, detailsResp.data);
+          } catch (err) {
+            console.error('[PAYMENT-ERROR] Error sending payment details:', err);
+          }
+          setKonamiCodes([]);
+
+          // this only runs if the above succeeds
+          const result = await axios.post(
+            `${Constants.baseUrl}/${Constants.gameStatus}`,
+            data2
+          );
+
+          const konami = {
+            gameName: gameData.gameName,
+            gameId: gameData.gameId,
+            konamiCode: result.data.Code,
+          };
+
+          setKonamiCodes((prev) => {
+            const updated = [...prev, konami];
+            localStorage.setItem("konamiCodes", JSON.stringify(updated));
+            return updated;
+          });
+
+          // Inform the user but stay on the catalog page
+          alert("Payment successful — your game token is saved. You will remain on this page.");
+        } catch (err) {
+          console.error("Error handling payment success:", err);
+          // Notify user of problem but do not navigate away
+          alert("Payment succeeded but we had an issue recording it. Please contact support.");
+        }
+      },
+      // Prevent any default redirect behaviour on modal close
+      modal: {
+        ondismiss: () => {
+          // Do nothing special on dismiss. Stay on the Catalog page.
+          console.log("Razorpay modal dismissed — remaining on catalog page.");
+        },
       },
       theme: {
         color: "#FDD226",
